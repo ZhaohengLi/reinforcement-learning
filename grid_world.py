@@ -43,7 +43,6 @@ class Maze(object):
             raise IndexError("Position out of bounds: {}".format(position))
         return self.topology[tuple(position)]
 
-
     def flatten_index(self, index_tuple):
         return np.ravel_multi_index(index_tuple, self.shape)
 
@@ -62,20 +61,20 @@ class Maze(object):
     def __repr__(self):
         return 'Maze({})'.format(repr(self.topology.tolist()))
 
+
 def move_avoiding_walls(maze, position, action):
     """
     Return the new position after moving, and the event that happened ('hit-wall' or 'moved').
     Works with the position and action as a (row, column) array.
     """
     # Compute new position
-
     new_position = position + action
+
     # Compute collisions with walls, including implicit walls at the ends of the world.
     if not maze.in_bounds_unflat(new_position) or maze.get_unflat(new_position) == '#':
         return position, 'hit-wall'
 
     return new_position, 'moved'
-
 
 
 class GridWorld(object):
@@ -119,9 +118,9 @@ class GridWorld(object):
         self.action_error_prob = action_error_prob
 
         for x in range(self.maze.shape[0]):
-        	for y in range(self.maze.shape[1]):
-        		if self.maze.topology[x][y] == 'o':
-        			self.origin = (x, y)
+            for y in range(self.maze.shape[1]):
+                if self.maze.topology[x][y] == 'o':
+                    self.origin = (x, y)
         self.actions = [maze_actions[direction] for direction in directions]
         self.num_actions = len(self.actions)
         self.state = None
@@ -149,9 +148,9 @@ class GridWorld(object):
         """
         return self.state
 
-
     def perform_action(self, action_idx):
         """Perform an action (specified by index), yielding a new state and reward."""
+
         # In the absorbing end state, nothing does anything.
         if self.is_terminal(self.state):
             return self.observe(), 0
@@ -170,7 +169,6 @@ class GridWorld(object):
                     action_idx = 3
                 else:
                     action_idx = 1
-
 
         action = self.actions[action_idx]
 
@@ -217,30 +215,30 @@ class GridWorld(object):
         return rewards.max()
 
 
-def Value_iteration(transition_prob, rewds, num_states, num_actions, discount=0.9):
-    discounted_V = np.zeros(num_states)
+def value_iteration(transition_prob, rewds, num_states, num_actions, discount=0.9):
+    discounted_v = np.zeros(num_states)
     for t in range(100):
-        V = np.zeros(num_states)
+        v = np.zeros(num_states)
         for s in range(num_states):
             mark_a = 0
             max_sum = -np.inf
             for a in range(num_actions):
                 sum_ = 0.0
                 for s_ in range(num_states):
-                    sum_ += transition_prob[s][a][s_] * (rewds[s][a][s_] + discount * discounted_V[s_])
+                    sum_ += transition_prob[s][a][s_] * (rewds[s][a][s_] + discount * discounted_v[s_])
                 if sum_ > max_sum:
                     max_sum = sum_
                     mark_a = a
-            V[s] = max_sum
-        discounted_V = V
-    return discounted_V
+            v[s] = max_sum
+        discounted_v = v
+    return discounted_v
 
 
-def Q_learning(grid_world, timehorizon = 15, discount=0.9, learning_rate=0.5):
+def q_learning(grid_world, time_horizon=15, discount=0.9, learning_rate=0.5):
     n, m = grid_world.maze.shape
     num_states = grid_world.num_states
     num_actions = grid_world.num_actions
-    Q_value = np.zeros((num_states, num_actions))
+    q_value = np.zeros((num_states, num_actions))
     rew_sum = np.zeros((num_states, num_actions))
     cnt = np.zeros((num_states, num_actions))
 
@@ -249,9 +247,10 @@ def Q_learning(grid_world, timehorizon = 15, discount=0.9, learning_rate=0.5):
         grid_world.reset()
         traj = []
         
-        for t in range(timehorizon):
+        for t in range(time_horizon):
             state = copy.deepcopy(grid_world.state)
             act = None
+
             # TODO: use epsilon greedy to choose an action to take
             mark_a = 0
             max_ave = -np.inf
@@ -263,29 +262,33 @@ def Q_learning(grid_world, timehorizon = 15, discount=0.9, learning_rate=0.5):
             act = mark_a
             if random.random() > 0.7:
                 act = (choice([1, 2, 3]) + act) % 4
-            
             # END
+
             next_state, rew = grid_world.perform_action(act)
             sum_rewards += rew
             traj.append((state, act, rew, next_state))
+
             # TODO: update Q-value
             max_q = -np.inf
             for a in range(num_actions):
-                q = Q_value[next_state, a]
+                q = q_value[next_state, a]
                 if q > max_q:
                     max_q = q
-            Q_value[state, act] = learning_rate * Q_value[state, act] + (1 - learning_rate) * (rew + discount * max_q)
+            q_value[state, act] = learning_rate * q_value[state, act] + (1 - learning_rate) * (rew + discount * max_q)
             grid_world.state = next_state
             # END
+
+        # Update cnt & rew_sum
         for i in traj:
             cnt[i[0]][i[1]] += 1
         temp = 0
         for i in reversed(traj):
             temp += i[2]
-            rew[i[0]][i[1]] += temp
+            rew_sum[i[0]][i[1]] += temp
             temp *= discount
+        # End
             
-    return sum_rewards, Q_value
+    return sum_rewards, q_value
 
 
 maze = [['.', '.', '.', '.', '.', '.'],
@@ -297,11 +300,13 @@ maze = [['.', '.', '.', '.', '.', '.'],
 
 grid_world = GridWorld(maze)
 
-r, q = Q_learning(grid_world)
+r, q = q_learning(grid_world)
 
 transition_prob, rewds = grid_world.as_mdp()
-v = Value_iteration(transition_prob, rewds, grid_world.num_states, grid_world.num_actions)
+v = value_iteration(transition_prob, rewds, grid_world.num_states, grid_world.num_actions)
+
+# for TA checking
 print(v[20], r, q[20])
 
-sio.savemat("value_iter", {"v":v})
-sio.savemat("q_learning", {"rew":r, "q": q})
+sio.savemat("value_iter", {"v": v})
+sio.savemat("q_learning", {"rew": r, "q": q})
